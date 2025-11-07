@@ -1,9 +1,9 @@
 import os
-import pymysql.cursors
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import pymysql
 from dotenv import load_dotenv
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -16,98 +16,76 @@ def get_db_connection_params():
     if mysql_url:
         try:
             url = urlparse(mysql_url)
-            print(f"DEBUG DB CONFIG (sin password): host={url.hostname}, port={url.port}, user={url.username}, database={url.path.strip('/')}")
-
+            db_name = url.path[1:] 
+            
             return {
                 'host': url.hostname,
                 'user': url.username,
                 'password': url.password,
-                'database': url.path.strip('/'),
-                'port': url.port if url.port else 3306,
+                'db': db_name,
+                'port': url.port or 3306,
                 'charset': 'utf8mb4',
                 'cursorclass': pymysql.cursors.DictCursor
             }
         except Exception as e:
             print(f"Error al parsear MYSQL_URL: {e}")
             return None
-    
-    return None
-
-def verify_db_connection(params):
-    if not params:
-        print("Error: Parámetros de conexión a DB no encontrados.")
-        return False
-
-    print(f"Intentando conectar a la base de datos: {params.get('database')} en {params.get('host')}:{params.get('port')} con usuario {params.get('user')}")
-    
-    try:
-        connection = pymysql.connect(**params)
-        connection.close()
-        print("Conexión a MySQL exitosa.")
-        return True
-    except pymysql.Error as e:
-        print(f"Error al conectar a MySQL. Detalles del error: {e}")
-        return False
-    except Exception as e:
-        print(f"Error desconocido durante la verificación de conexión: {e}")
-        return False
-
-db_params = get_db_connection_params()
-verify_db_connection(db_params)
+            
+    else:
+        return {
+            'host': os.environ.get('DB_HOST'),
+            'user': os.environ.get('DB_USER'),
+            'password': os.environ.get('DB_PASS'),
+            'db': os.environ.get('DB_NAME'),
+            'port': int(os.environ.get('DB_PORT', 3306)),
+            'charset': 'utf8mb4',
+            'cursorclass': pymysql.cursors.DictCursor
+        }
 
 @app.route('/api/register', methods=['POST'])
 def register_user():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    message = data.get('message', '')
+
+    if not name or not email:
+        return jsonify({"message": "Nombre y correo electrónico son requeridos."}), 400
+
+    conn = None
     try:
-        data = request.json
+        db_params = get_db_connection_params()
         
-        # LOG DE DEPURACIÓN CRÍTICO
-        print(f"DEBUG: Datos recibidos en /api/register: {data}")
-
-        if data is None:
-            print("ERROR: Datos JSON es None. Probable Content-Type incorrecto en el frontend.")
-            return jsonify({"success": False, "message": "Formato de solicitud inválido o JSON vacío."}), 400
-
-        full_name = data.get('full_name')
-        email = data.get('email')
-        message = data.get('message')
-
-        if not all([full_name, email]):
-            print(f"ERROR: Validación fallida. full_name: '{full_name}', email: '{email}'")
-            return jsonify({"success": False, "message": "Faltan datos requeridos: nombre completo o correo electrónico."}), 400
-
         if not db_params:
-            print("Error: Parámetros de DB no disponibles en el endpoint /api/register.")
-            return jsonify({"success": False, "message": "Error interno: Configuración de la base de datos no encontrada."}), 500
-
-        try:
-            connection = pymysql.connect(**db_params)
-
-            try:
-                with connection.cursor() as cursor:
-                    sql = "INSERT INTO registrations (full_name, email, message) VALUES (%s, %s, %s)"
-                    cursor.execute(sql, (full_name, email, message))
-
-                connection.commit()
-                print(f"Registro exitoso para: {email}")
-                return jsonify({"success": True, "message": "Registro exitoso."}), 200
-
-            finally:
-                connection.close()
-
-        except pymysql.Error as e:
-            # ESTE ES EL ERROR QUE ESTAMOS BUSCANDO: PROBLEMA DE TABLA O CONEXIÓN
-            print(f"Error de base de datos al registrar: {e}")
-            return jsonify({"success": False, "message": "Error interno: No se pudo completar el registro en la base de datos. Por favor, verifica tu servidor MySQL y configuración."}), 500
+            print("ERROR: No se pudieron obtener los parámetros de conexión de la base de datos.")
+            return jsonify({"message": "Error interno: Configuración de DB faltante."}), 500
+            
+        conn = pymysql.connect(**db_params)
         
-        except Exception as e:
-            print(f"Error inesperado en /api/register: {e}")
-            return jsonify({"success": False, "message": "Error interno desconocido."}), 500
+        with conn.cursor() as cursor:
+            sql_check = "SELECT id FROM registrations WHERE email = %s"
+            cursor.execute(sql_check, (email,))
+            if cursor.fetchone():
+                return jsonify({"message": "Este correo ya se encuentra registrado."}), 409
 
+            sql_insert = "INSERT INTO registrations (name, email, message) VALUES (%s, %s, %s)"
+            cursor.execute(sql_insert, (name, email, message))
+        
+        conn.commit()
+        return jsonify({"message": "Registro exitoso", "email": email}), 201
+
+    except pymysql.err.OperationalError as e:
+        print(f"ERROR: No se pudo conectar a la base de datos. Error: {e}")
+        return jsonify({"message": "Error interno: No se pudo conectar a la base de datos."}), 500
+    except pymysql.err.IntegrityError as e:
+        print(f"ERROR de integridad: {e}")
+        return jsonify({"message": "Este correo ya está registrado (Error de integridad)."}), 409
     except Exception as e:
-        # Esto captura errores si el body no es JSON (ej. "Expecting value: line 1 column 1")
-        print(f"ERROR FATAL al recibir o procesar JSON: {e}")
-        return jsonify({"success": False, "message": "Formato de solicitud inválido. No se pudo decodificar JSON."}), 400
+        print(f"ERROR desconocido en el backend: {e}")
+        return jsonify({"message": "Error interno del servidor."}), 500
+    finally:
+        if conn and conn.open:
+            conn.close()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=os.environ.get('PORT', 5000))
