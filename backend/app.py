@@ -25,7 +25,7 @@ def get_db_connection_params():
     mysql_url = os.environ.get('MYSQL_URL')
 
     if not mysql_url:
-        logging.critical("La variable de entorno MYSQL_URL NO está configurada. Usando fallback 127.0.0.1.")
+        logging.critical("CRITICO: MYSQL_URL no configurada. Usando 127.0.0.1.")
         DB_PARAMS = {
             'host': '127.0.0.1', 
             'user': 'root', 
@@ -48,12 +48,12 @@ def get_db_connection_params():
         if url.port:
             params['port'] = url.port
             
-        logging.info(f"Parámetros de DB cargados. Host: {params['host']}, DB: {params['db']}")
+        logging.info(f"DB PARAMETROS CARGADOS. Host: {params.get('host')}, Puerto: {params.get('port')}, DB: {params.get('db')}")
         DB_PARAMS = params
         return DB_PARAMS
 
     except Exception as e:
-        logging.error(f"Error al parsear MYSQL_URL: {e}", exc_info=True)
+        logging.error(f"ERROR: Fallo al parsear MYSQL_URL: {e}", exc_info=True)
         return {}
 
 def create_db_table():
@@ -65,10 +65,12 @@ def create_db_table():
         get_db_connection_params()
 
     if not DB_PARAMS or not DB_PARAMS.get('host'):
-        logging.critical("Fallo al obtener los parámetros de DB. No se puede inicializar la tabla.")
+        logging.critical("CRITICO: No hay parametros de DB validos para inicializar.")
         return False
         
+    connection = None
     try:
+        logging.info(f"INTENTANDO CONECTAR a HOST: {DB_PARAMS.get('host')} y PUERTO: {DB_PARAMS.get('port') or '3306'}")
         connection = pymysql.connect(**DB_PARAMS)
         with connection.cursor() as cursor:
             sql = """
@@ -82,13 +84,19 @@ def create_db_table():
             """
             cursor.execute(sql)
         connection.commit()
-        connection.close()
         DB_INITIALIZED = True
-        logging.info("Tabla 'registrations' verificada/creada exitosamente.")
+        logging.info("EXITO: Tabla 'registrations' verificada/creada.")
         return True
-    except Exception as e:
-        logging.error(f"Error al crear/verificar la tabla en la DB: {e}", exc_info=True)
+    except pymysql.err.OperationalError as e:
+        # AQUI ES DONDE CAPTURAMOS EL ERROR CRITICO DE CONEXION
+        logging.error(f"FALLO CRITICO DE CONEXION MYSQL (OperationalError): {e}", exc_info=True)
         return False
+    except Exception as e:
+        logging.error(f"ERROR: Fallo al crear/verificar la tabla: {e}", exc_info=True)
+        return False
+    finally:
+        if connection:
+            connection.close()
 
 get_db_connection_params()
 
@@ -96,6 +104,7 @@ get_db_connection_params()
 @app.route('/api/register', methods=['POST'])
 def register():
     global DB_INITIALIZED
+    
     if not DB_INITIALIZED:
         if not create_db_table():
             return jsonify({
@@ -115,12 +124,13 @@ def register():
         }), 400
 
     if not DB_PARAMS or not DB_PARAMS.get('host') or not DB_INITIALIZED:
-        logging.critical("Fallo crítico: No hay parámetros válidos o la DB no se inicializó.")
+        logging.critical("CRITICO: Parámetros DB no válidos.")
         return jsonify({
             'success': False, 
             'message': 'Error interno: Faltan parámetros de configuración de la base de datos.'
         }), 500
 
+    connection = None
     try:
         connection = pymysql.connect(**DB_PARAMS)
         
@@ -147,7 +157,8 @@ def register():
             }), 201
 
         finally:
-            connection.close()
+            if connection:
+                connection.close()
 
     except pymysql.err.OperationalError as e:
         logging.error(f"Error Operacional de MySQL (Conexión/DB): {e}", exc_info=True)
