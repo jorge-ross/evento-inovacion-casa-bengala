@@ -45,6 +45,8 @@ def get_db_config():
 
     debug_config = config.copy()
     debug_config['password'] = '******'
+    debug_config['cursorclass'] = str(debug_config['cursorclass'])
+    
     print(f"DEBUG DB CONFIG (sin password): {json.dumps(debug_config)}")
     
     return config
@@ -52,7 +54,7 @@ def get_db_config():
 
 def get_db_connection():
     DB_CONFIG = get_db_config()
-    print("Intentando conectar a la base de datos...")
+    print(f"Intentando conectar a la base de datos: {DB_CONFIG.get('database')}")
     
     try:
         conn = pymysql.connect(**DB_CONFIG)
