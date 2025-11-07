@@ -1,175 +1,134 @@
 import os
-import sys
-import logging
 from flask import Flask, request, jsonify
+import mysql.connector
+from mysql.connector import errorcode
 from flask_cors import CORS
-import pymysql.cursors
-from urllib.parse import urlparse, parse_qs
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
-CORS(app)
+CORS(app) 
 
-DB_PARAMS = None
-DB_INITIALIZED = False
+class ConnectionError(Exception):
+    pass
 
-def get_db_connection_params():
-    global DB_PARAMS
-    if DB_PARAMS is not None:
-        return DB_PARAMS
-
-    mysql_url = os.environ.get('MYSQL_URL')
-
-    if not mysql_url:
-        logging.critical("CRITICO: MYSQL_URL no configurada. Usando 127.0.0.1.")
-        DB_PARAMS = {
-            'host': '127.0.0.1', 
-            'user': 'root', 
-            'password': '', 
-            'db': 'testdb', 
-            'charset': 'utf8mb4'
-        }
-        return DB_PARAMS
+def get_db_connection():
+    DB_HOST = os.environ.get('DB_HOST')
+    DB_PORT = int(os.environ.get('DB_PORT', 3306))
+    DB_USER = os.environ.get('DB_USER')
+    DB_PASSWORD = os.environ.get('DB_PASSWORD')
+    DB_NAME = os.environ.get('DB_NAME')
 
     try:
-        url = urlparse(mysql_url)
-        params = {
-            'host': url.hostname,
-            'user': url.username,
-            'password': url.password,
-            'db': url.path[1:],
-            'charset': 'utf8mb4',
-            'cursorclass': pymysql.cursors.DictCursor
-        }
-        if url.port:
-            params['port'] = url.port
-            
-        logging.info(f"DB PARAMETROS CARGADOS. Host: {params.get('host')}, Puerto: {params.get('port')}, DB: {params.get('db')}")
-        DB_PARAMS = params
-        return DB_PARAMS
-
+        cnx = mysql.connector.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            connection_timeout=5
+        )
+        return cnx
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            raise ConnectionError("Error de autenticación o permisos en MySQL.")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            raise ConnectionError("Base de datos inexistente.")
+        elif err.errno == errorcode.CR_CONN_ERROR:
+            raise ConnectionError("Host de BD no alcanzable.")
+        else:
+            raise ConnectionError(f"Error de conexión desconocido: {err}")
     except Exception as e:
-        logging.error(f"ERROR: Fallo al parsear MYSQL_URL: {e}", exc_info=True)
-        return {}
+        raise ConnectionError(f"Error general: {e}")
 
-def create_db_table():
-    global DB_INITIALIZED, DB_PARAMS
-    if DB_INITIALIZED:
-        return True
 
-    if DB_PARAMS is None:
-        get_db_connection_params()
-
-    if not DB_PARAMS or not DB_PARAMS.get('host'):
-        logging.critical("CRITICO: No hay parametros de DB validos para inicializar.")
-        return False
+def initialize_db():
+    try:
+        cnx = get_db_connection()
+        cursor = cnx.cursor()
         
-    connection = None
-    try:
-        logging.info(f"INTENTANDO CONECTAR a HOST: {DB_PARAMS.get('host')}")
-        connection = pymysql.connect(**DB_PARAMS)
-        with connection.cursor() as cursor:
-            sql = """
-            CREATE TABLE IF NOT EXISTS registrations (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """
-            cursor.execute(sql)
-        connection.commit()
-        DB_INITIALIZED = True
-        logging.info("EXITO: Tabla 'registrations' verificada/creada.")
-        return True
-    except pymysql.err.OperationalError as e:
-        logging.error(f"FALLO CRITICO DE CONEXION MYSQL (OperationalError): {e}", exc_info=True)
-        return False
+        SQL_CREATE_TABLE = """
+        CREATE TABLE IF NOT EXISTS Registros (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            message TEXT,
+            registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        cursor.execute(SQL_CREATE_TABLE)
+        cnx.commit()
+        cursor.close()
+        cnx.close()
+    except ConnectionError as e:
+        print(f"Fallo en la inicialización: {e}")
     except Exception as e:
-        logging.error(f"ERROR: Fallo al crear/verificar la tabla: {e}", exc_info=True)
-        return False
-    finally:
-        if connection:
-            connection.close()
+        print(f"Error desconocido en la inicialización: {e}")
+
+
+with app.app_context():
+    initialize_db()
+
 
 @app.route('/api/register', methods=['POST'])
-def register():
-    global DB_INITIALIZED
-    
-    if DB_PARAMS is None:
-        get_db_connection_params()
-        
-    if not DB_INITIALIZED:
-        if not create_db_table():
-            return jsonify({
-                'success': False, 
-                'message': 'Error interno: No se pudo conectar la base de datos para la inicialización. Verifica tu configuración.'
-            }), 500
-    
+def register_user():
     data = request.get_json()
     name = data.get('name')
     email = data.get('email')
-    message = data.get('message')
+    message = data.get('message', '')
 
     if not name or not email:
         return jsonify({
-            'success': False,
-            'message': 'Faltan datos requeridos: nombre completo o correo electrónico.'
+            "message": "Faltan campos obligatorios (nombre y email).",
+            "success": False
         }), 400
 
-    if not DB_PARAMS or not DB_PARAMS.get('host') or not DB_INITIALIZED:
-        logging.critical("CRITICO: Parámetros DB no válidos o DB no inicializada.")
-        return jsonify({
-            'success': False, 
-            'message': 'Error interno: Faltan parámetros de configuración de la base de datos.'
-        }), 500
-
-    connection = None
     try:
-        connection = pymysql.connect(**DB_PARAMS)
-        
-        try:
-            with connection.cursor() as cursor:
-                sql_check = "SELECT id FROM registrations WHERE email = %s"
-                cursor.execute(sql_check, (email,))
-                result = cursor.fetchone()
-                
-                if result:
-                    return jsonify({
-                        'success': False,
-                        'message': 'Este correo electrónico ya está registrado.'
-                    }), 409
-
-                sql_insert = "INSERT INTO registrations (name, email, message) VALUES (%s, %s, %s)"
-                cursor.execute(sql_insert, (name, email, message))
-
-            connection.commit()
-            
-            return jsonify({
-                'success': True,
-                'message': 'Registro exitoso! Ahora formas parte del futuro digital. Revisa tu correo para los detalles del evento.'
-            }), 201
-
-        finally:
-            if connection:
-                connection.close()
-
-    except pymysql.err.OperationalError as e:
-        logging.error(f"Error Operacional de MySQL (Conexión/DB): {e}", exc_info=True)
+        cnx = get_db_connection()
+        cursor = cnx.cursor()
+    except ConnectionError as e:
         return jsonify({
-            'success': False, 
-            'message': 'Error interno: No se pudo conectar o interactuar con la base de datos. Por favor, verifica tu servidor MySQL y configuración.'
+            "message": f"Error interno: No se pudo conectar la base de datos. Detalle: {e}",
+            "success": False
         }), 500
-        
-    except Exception as e:
-        logging.error(f"Error desconocido durante el registro: {e}", exc_info=True)
+
+    try:
+        SQL_INSERT = "INSERT INTO Registros (name, email, message) VALUES (%s, %s, %s)"
+        data_insert = (name, email, message)
+
+        cursor.execute(SQL_INSERT, data_insert)
+        cnx.commit()
+
         return jsonify({
-            'success': False, 
-            'message': 'Error interno desconocido durante el procesamiento de su solicitud.'
+            "message": "Registro exitoso en el evento.",
+            "success": True
+        }), 201
+
+    except mysql.connector.IntegrityError:
+        return jsonify({
+            "message": "El correo electrónico ya está registrado.",
+            "success": False
+        }), 409
+
+    except mysql.connector.Error as err:
+        print(f"Error al registrar: {err}")
+        return jsonify({
+            "message": f"Error de base de datos al intentar registrar: {err.msg}",
+            "success": False
         }), 500
+
+    finally:
+        if 'cursor' in locals() and cursor:
+            cursor.close()
+        if 'cnx' in locals() and cnx and cnx.is_connected():
+            cnx.close()
+
+
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({
+        "message": "¡Servidor de Registro de Evento de Casa Bengala activo!",
+        "status": "ok"
+    })
 
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=True)
