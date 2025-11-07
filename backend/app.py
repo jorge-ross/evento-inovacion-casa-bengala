@@ -3,23 +3,42 @@ from flask_cors import CORS
 import re
 import pymysql
 import os
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuración de conexión a mysql usando pymysql
-DB_CONFIG = {
-    'host': os.environ.get('DB_HOST'),
-    'user': os.environ.get('DB_USER'),
-    'password': os.environ.get('DB_PASS'),
-    'database': os.environ.get('DB_NAME'),
-    'port': int(os.environ.get('DB_PORT', 3306)),
-    'charset': 'utf8mb4',
-    'cursorclass': pymysql.cursors.DictCursor
-}
-
+def get_db_config():
+    mysql_url = os.getenv('MYSQL_URL')
+    
+    if mysql_url:
+        print("Usando MYSQL_URL de Railway para la configuración.")
+        url = urlparse(mysql_url)
+        database_name = url.path.strip('/')
+        
+        return {
+            'user': url.username, 
+            'password': url.password,
+            'host': url.hostname, 
+            'port': url.port,
+            'database': database_name,
+            'charset': 'utf8mb4',
+            'cursorclass': pymysql.cursors.DictCursor
+        }
+    else:
+        print("Usando variables de entorno separadas o valores locales por defecto.")
+        return {
+            'user': os.getenv('MYSQL_USER', 'root'), 
+            'password': os.getenv('MYSQL_PASSWORD', 'tu_password_local'),
+            'host': os.getenv('MYSQL_HOST', '127.0.0.1'), 
+            'port': int(os.getenv('MYSQL_PORT', 3306)),
+            'database': os.getenv('MYSQL_DATABASE', 'event_db'),
+            'charset': 'utf8mb4',
+            'cursorclass': pymysql.cursors.DictCursor
+        }
 
 def get_db_connection():
+    DB_CONFIG = get_db_config()
     # print("Intentando conectar a la base de datos...")
     try:
         conn = pymysql.connect(**DB_CONFIG)
@@ -100,5 +119,7 @@ def register_user():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+    port = int(os.getenv('PORT', 5000)) 
+    print(f"Iniciando servidor Flask en puerto {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
 
