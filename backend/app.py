@@ -14,8 +14,8 @@ app = Flask(__name__)
 CORS(app) 
 
 def get_db_config():
-    mysql_url = os.getenv('MYSQL_URL')
-    database_name = os.getenv('MYSQL_DATABASE')
+    mysql_url = os.environ.get('MYSQL_URL')
+    database_name = os.environ.get('MYSQL_DATABASE')
     
     if mysql_url and database_name:
         url = urlparse(mysql_url)
@@ -29,9 +29,10 @@ def get_db_config():
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
-        print(f"DEBUG DB Config: Host={config['host']}, DB={config['database']}")
+        print(f"DEBUG DB Config (Railway): Host={config['host']}, DB={config['database']}")
         
     else:
+        # LOGICA DE FALLBACK LOCAL (SOLO SI NO HAY VARIABLES DE ENTORNO)
         config = {
             'user': os.getenv('MYSQL_USER', 'root'), 
             'password': os.getenv('MYSQL_PASSWORD', 'your_local_password'),
