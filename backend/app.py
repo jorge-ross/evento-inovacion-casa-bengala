@@ -2,17 +2,18 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import re
 import pymysql
+import os
 
 app = Flask(__name__)
 CORS(app)
 
 # Configuración de conexión a mysql usando pymysql
 DB_CONFIG = {
-    'user': 'root',
-    'password': '',
-    'host': '127.0.0.1',
-    'port': 3306,
-    'database': 'event_db',
+    'host': os.environ.get('DB_HOST'),
+    'user': os.environ.get('DB_USER'),
+    'password': os.environ.get('DB_PASS'),
+    'database': os.environ.get('DB_NAME'),
+    'port': int(os.environ.get('DB_PORT', 3306)),
     'charset': 'utf8mb4',
     'cursorclass': pymysql.cursors.DictCursor
 }
@@ -99,5 +100,5 @@ def register_user():
 
 
 if __name__ == '__main__':
-    print("Iniciando servidor Flask en http://127.0.0.1:5000")
-    app.run(port=5000, debug=False)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
+
