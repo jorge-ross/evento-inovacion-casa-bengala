@@ -15,9 +15,34 @@ CORS(app)
 
 def get_db_config():
     mysql_url = os.environ.get('MYSQL_URL')
-    database_name = os.environ.get('MYSQL_DATABASE')
-    
-    if mysql_url and database_name and database_name != '@mysql.mysql.MYSQL_DATABASE':
+
+    db_host_railway = os.environ.get('MYSQL_HOST')
+    db_user_railway = os.environ.get('MYSQL_USER')
+    db_pass_railway = os.environ.get('MYSQL_PASSWORD')
+    db_name_railway = os.environ.get('MYSQL_DATABASE')
+    db_port_railway = os.environ.get('MYSQL_PORT')
+
+    if not db_host_railway:
+        db_host_railway = os.environ.get('MYSQLHOST')
+        db_user_railway = os.environ.get('MYSQLUSER')
+        db_pass_railway = os.environ.get('MYSQLPASSWORD')
+        db_name_railway = os.environ.get('MYSQLDATABASE')
+        db_port_railway = os.environ.get('MYSQLPORT')
+
+    if db_host_railway and db_user_railway and db_name_railway:
+        config = {
+            'user': db_user_railway, 
+            'password': db_pass_railway,
+            'host': db_host_railway, 
+            'port': int(db_port_railway or 3306),
+            'database': db_name_railway,
+            'charset': 'utf8mb4',
+            'cursorclass': pymysql.cursors.DictCursor
+        }
+        print(f"DEBUG DB Config (Railway Individual MYSQL*): Host={config['host']}, DB={config['database']}")
+        return config
+
+    elif mysql_url:
         url = urlparse(mysql_url)
         
         db_host = url.hostname if url.hostname else 'mysql.railway.internal'
@@ -27,12 +52,13 @@ def get_db_config():
             'password': url.password,
             'host': db_host, 
             'port': url.port if url.port else 3306,
-            'database': database_name.lstrip('/'),
+            'database': url.path.lstrip('/'),
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
-        print(f"DEBUG DB Config (Railway): Host={config['host']}, DB={config['database']}")
-        
+        print(f"DEBUG DB Config (Railway URL): Host={config['host']}, DB={url.path.lstrip('/')}")
+        return config
+
     else:
         config = {
             'user': os.getenv('MYSQL_USER', 'root'), 
@@ -43,9 +69,8 @@ def get_db_config():
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
-        print(f"DEBUG DB Config (Local): Host={config['host']}, DB={config['database']}")
-        
-    return config
+        print(f"DEBUG DB Config (Local Fallback): Host={config['host']}, DB={config['database']}")
+        return config
 
 def get_db_connection():
     DB_CONFIG = get_db_config()
