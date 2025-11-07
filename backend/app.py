@@ -4,12 +4,9 @@ import logging
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import pymysql.cursors
-from dotenv import load_dotenv
 from urllib.parse import urlparse, parse_qs
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -70,7 +67,7 @@ def create_db_table():
         
     connection = None
     try:
-        logging.info(f"INTENTANDO CONECTAR a HOST: {DB_PARAMS.get('host')} y PUERTO: {DB_PARAMS.get('port') or '3306'}")
+        logging.info(f"INTENTANDO CONECTAR a HOST: {DB_PARAMS.get('host')}")
         connection = pymysql.connect(**DB_PARAMS)
         with connection.cursor() as cursor:
             sql = """
@@ -88,7 +85,6 @@ def create_db_table():
         logging.info("EXITO: Tabla 'registrations' verificada/creada.")
         return True
     except pymysql.err.OperationalError as e:
-        # AQUI ES DONDE CAPTURAMOS EL ERROR CRITICO DE CONEXION
         logging.error(f"FALLO CRITICO DE CONEXION MYSQL (OperationalError): {e}", exc_info=True)
         return False
     except Exception as e:
@@ -98,13 +94,13 @@ def create_db_table():
         if connection:
             connection.close()
 
-get_db_connection_params()
-
-
 @app.route('/api/register', methods=['POST'])
 def register():
     global DB_INITIALIZED
     
+    if DB_PARAMS is None:
+        get_db_connection_params()
+        
     if not DB_INITIALIZED:
         if not create_db_table():
             return jsonify({
@@ -124,7 +120,7 @@ def register():
         }), 400
 
     if not DB_PARAMS or not DB_PARAMS.get('host') or not DB_INITIALIZED:
-        logging.critical("CRITICO: Parámetros DB no válidos.")
+        logging.critical("CRITICO: Parámetros DB no válidos o DB no inicializada.")
         return jsonify({
             'success': False, 
             'message': 'Error interno: Faltan parámetros de configuración de la base de datos.'
@@ -164,7 +160,7 @@ def register():
         logging.error(f"Error Operacional de MySQL (Conexión/DB): {e}", exc_info=True)
         return jsonify({
             'success': False, 
-            'message': 'Error interno: No se pudo conectar o interactuar con la base de datos. Por favor, verifica tu servidor MySQL y configuración.'
+            'message': 'Error interno: No se pudo conectar o interactuar con la base de datos. Por favor, verifica tu servidor MySQL y configuración."
         }), 500
         
     except Exception as e:
