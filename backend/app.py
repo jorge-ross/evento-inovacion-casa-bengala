@@ -14,37 +14,28 @@ app = Flask(__name__)
 CORS(app) 
 
 def get_db_config():
-    mysql_url = os.environ.get('MYSQL_URL')
+    db_host = os.environ.get('MYSQLHOST') or os.environ.get('MYSQL_HOST')
+    db_user = os.environ.get('MYSQLUSER') or os.environ.get('MYSQL_USER')
+    db_pass = os.environ.get('MYSQLPASSWORD') or os.environ.get('MYSQL_PASSWORD')
+    db_name = os.environ.get('MYSQLDATABASE') or os.environ.get('MYSQL_DATABASE')
+    db_port = os.environ.get('MYSQLPORT') or os.environ.get('MYSQL_PORT')
 
-    db_host_railway = os.environ.get('MYSQL_HOST')
-    db_user_railway = os.environ.get('MYSQL_USER')
-    db_pass_railway = os.environ.get('MYSQL_PASSWORD')
-    db_name_railway = os.environ.get('MYSQL_DATABASE')
-    db_port_railway = os.environ.get('MYSQL_PORT')
-
-    if not db_host_railway:
-        db_host_railway = os.environ.get('MYSQLHOST')
-        db_user_railway = os.environ.get('MYSQLUSER')
-        db_pass_railway = os.environ.get('MYSQLPASSWORD')
-        db_name_railway = os.environ.get('MYSQLDATABASE')
-        db_port_railway = os.environ.get('MYSQLPORT')
-
-    if db_host_railway and db_user_railway and db_name_railway:
+    if db_host and db_user and db_name:
         config = {
-            'user': db_user_railway, 
-            'password': db_pass_railway,
-            'host': db_host_railway, 
-            'port': int(db_port_railway or 3306),
-            'database': db_name_railway,
+            'user': db_user, 
+            'password': db_pass,
+            'host': db_host if db_host != 'localhost' else 'mysql.railway.internal', 
+            'port': int(db_port or 3306),
+            'database': db_name,
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
-        print(f"DEBUG DB Config (Railway Individual MYSQL*): Host={config['host']}, DB={config['database']}")
+        print(f"DEBUG DB Config (Railway Individual): Host={config['host']}, DB={config['database']}")
         return config
 
-    elif mysql_url:
+    mysql_url = os.environ.get('MYSQL_URL')
+    if mysql_url:
         url = urlparse(mysql_url)
-        
         db_host = url.hostname if url.hostname else 'mysql.railway.internal'
 
         config = {
@@ -76,6 +67,7 @@ def get_db_connection():
     DB_CONFIG = get_db_config()
     try:
         conn = pymysql.connect(**DB_CONFIG)
+        print("Conexión a DB exitosa.")
         return conn
     except Exception as err:
         print(f"!!! CRITICAL DB CONNECTION ERROR: {err}")
