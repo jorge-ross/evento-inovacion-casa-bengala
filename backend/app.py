@@ -50,18 +50,16 @@ def get_db_config():
         print(f"DEBUG DB Config (Railway URL): Host={config['host']}, DB={url.path.lstrip('/')}")
         return config
 
-    else:
-        config = {
-            'user': os.getenv('MYSQL_USER', 'root'), 
-            'password': os.getenv('MYSQL_PASSWORD', 'your_local_password'),
-            'host': os.getenv('MYSQL_HOST', '127.0.0.1'), 
-            'port': int(os.getenv('MYSQL_PORT', 3306)),
-            'database': os.getenv('MYSQL_DATABASE', 'event_db'),
-            'charset': 'utf8mb4',
-            'cursorclass': pymysql.cursors.DictCursor
-        }
-        print(f"DEBUG DB Config (Local Fallback): Host={config['host']}, DB={config['database']}")
-        return config
+    print("!!! ERROR CRÍTICO DE CONFIGURACIÓN: No se leyeron las variables de entorno de Railway.")
+    return {
+        'user': 'MISSING_USER', 
+        'password': 'MISSING_PASSWORD',
+        'host': 'mysql.railway.internal',
+        'port': 3306,
+        'database': 'event_db',
+        'charset': 'utf8mb4',
+        'cursorclass': pymysql.cursors.DictCursor
+    }
 
 def get_db_connection():
     DB_CONFIG = get_db_config()
