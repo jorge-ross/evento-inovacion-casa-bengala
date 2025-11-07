@@ -17,22 +17,23 @@ def get_db_config():
     mysql_url = os.environ.get('MYSQL_URL')
     database_name = os.environ.get('MYSQL_DATABASE')
     
-    if mysql_url and database_name:
+    if mysql_url and database_name and database_name != '@mysql.mysql.MYSQL_DATABASE':
         url = urlparse(mysql_url)
         
+        db_host = url.hostname if url.hostname else 'mysql.railway.internal'
+
         config = {
             'user': url.username, 
             'password': url.password,
-            'host': url.hostname, 
+            'host': db_host, 
             'port': url.port if url.port else 3306,
-            'database': database_name, 
+            'database': database_name.lstrip('/'),
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
         print(f"DEBUG DB Config (Railway): Host={config['host']}, DB={config['database']}")
         
     else:
-        # LOGICA DE FALLBACK LOCAL (SOLO SI NO HAY VARIABLES DE ENTORNO)
         config = {
             'user': os.getenv('MYSQL_USER', 'root'), 
             'password': os.getenv('MYSQL_PASSWORD', 'your_local_password'),
