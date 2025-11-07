@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD gunicorn backend.app:app --workers 4 --bind 0.0.0.0:${PORT:-8000}
+CMD ["gunicorn", "backend.app:app", "--workers", "4", "--bind", "0.0.0.0:8080"]
