@@ -100,4 +100,4 @@ def register_user():
 
 if __name__ == '__main__':
     print("Iniciando servidor Flask en http://127.0.0.1:5000")
-    app.run(port=5000, debug=True)
+    app.run(port=5000, debug=False)
