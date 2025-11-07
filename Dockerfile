@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["gunicorn", "backend.app:app", "--workers", "4", "--bind", "0.0.0.0:8080", "--timeout", "120"]
+CMD sh -c "gunicorn backend.app:app --workers 4 --bind 0.0.0.0:8080 --timeout 120"
