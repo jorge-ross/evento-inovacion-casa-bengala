@@ -1,134 +1,112 @@
-import os
-from flask import Flask, request, jsonify
-import mysql.connector
-from mysql.connector import errorcode
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+import mysql.connector
+import os
+import time
+
+DB_USER = os.environ.get('DB_USER', 'usuario_ejemplo')
+DB_PASSWORD = os.environ.get('DB_PASSWORD', 'password_ejemplo')
+DB_HOST = os.environ.get('DB_HOST', 'localhost')
+DB_NAME = os.environ.get('DB_NAME', 'mi_base_de_datos')
 
 app = Flask(__name__)
-CORS(app) 
-
-class ConnectionError(Exception):
-    pass
+CORS(app)
 
 def get_db_connection():
-    DB_HOST = os.environ.get('DB_HOST')
-    DB_PORT = int(os.environ.get('DB_PORT', 3306))
-    DB_USER = os.environ.get('DB_USER')
-    DB_PASSWORD = os.environ.get('DB_PASSWORD')
-    DB_NAME = os.environ.get('DB_NAME')
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            conn = mysql.connector.connect(
+                user=DB_USER,
+                password=DB_PASSWORD,
+                host=DB_HOST,
+                database=DB_NAME,
+                dictionary=True
+            )
+            return conn
+        except mysql.connector.Error as err:
+            print(f"Intento {attempt + 1}/{max_retries} fallido. Error de conexión: {err}")
+            if attempt < max_retries - 1:
+                time.sleep(2)
+            else:
+                print("Error fatal: No se pudo conectar a la base de datos después de varios intentos.")
+                return None
 
-    try:
-        cnx = mysql.connector.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            database=DB_NAME,
-            connection_timeout=5
-        )
-        return cnx
-    except mysql.connector.Error as err:
-        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-            raise ConnectionError("Error de autenticación o permisos en MySQL.")
-        elif err.errno == errorcode.ER_BAD_DB_ERROR:
-            raise ConnectionError("Base de datos inexistente.")
-        elif err.errno == errorcode.CR_CONN_ERROR:
-            raise ConnectionError("Host de BD no alcanzable.")
-        else:
-            raise ConnectionError(f"Error de conexión desconocido: {err}")
-    except Exception as e:
-        raise ConnectionError(f"Error general: {e}")
-
-
-def initialize_db():
-    try:
-        cnx = get_db_connection()
-        cursor = cnx.cursor()
-        
-        SQL_CREATE_TABLE = """
-        CREATE TABLE IF NOT EXISTS Registros (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            email VARCHAR(255) NOT NULL UNIQUE,
-            message TEXT,
-            registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-        cursor.execute(SQL_CREATE_TABLE)
-        cnx.commit()
-        cursor.close()
-        cnx.close()
-    except ConnectionError as e:
-        print(f"Fallo en la inicialización: {e}")
-    except Exception as e:
-        print(f"Error desconocido en la inicialización: {e}")
-
-
-with app.app_context():
-    initialize_db()
-
-
-@app.route('/api/register', methods=['POST'])
-def register_user():
-    data = request.get_json()
-    name = data.get('name')
-    email = data.get('email')
-    message = data.get('message', '')
-
-    if not name or not email:
-        return jsonify({
-            "message": "Faltan campos obligatorios (nombre y email).",
-            "success": False
-        }), 400
-
-    try:
-        cnx = get_db_connection()
-        cursor = cnx.cursor()
-    except ConnectionError as e:
-        return jsonify({
-            "message": f"Error interno: No se pudo conectar la base de datos. Detalle: {e}",
-            "success": False
-        }), 500
-
-    try:
-        SQL_INSERT = "INSERT INTO Registros (name, email, message) VALUES (%s, %s, %s)"
-        data_insert = (name, email, message)
-
-        cursor.execute(SQL_INSERT, data_insert)
-        cnx.commit()
-
-        return jsonify({
-            "message": "Registro exitoso en el evento.",
-            "success": True
-        }), 201
-
-    except mysql.connector.IntegrityError:
-        return jsonify({
-            "message": "El correo electrónico ya está registrado.",
-            "success": False
-        }), 409
-
-    except mysql.connector.Error as err:
-        print(f"Error al registrar: {err}")
-        return jsonify({
-            "message": f"Error de base de datos al intentar registrar: {err.msg}",
-            "success": False
-        }), 500
-
-    finally:
-        if 'cursor' in locals() and cursor:
-            cursor.close()
-        if 'cnx' in locals() and cnx and cnx.is_connected():
-            cnx.close()
-
-
-@app.route('/', methods=['GET'])
+@app.route('/')
 def home():
     return jsonify({
-        "message": "¡Servidor de Registro de Evento de Casa Bengala activo!",
-        "status": "ok"
+        "status": "Running", 
+        "service": "Flask API",
+        "database_host": DB_HOST
     })
 
+@app.route('/test-db', methods=['GET'])
+def test_db_connection():
+    conn = get_db_connection()
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            return jsonify({
+                "status": "success", 
+                "message": "Conexión a la base de datos exitosa (SELECT 1 OK)."
+            })
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Conexión OK, pero error al ejecutar consulta: {str(e)}"
+            }), 500
+        finally:
+            conn.close()
+    else:
+        return jsonify({
+            "status": "error", 
+            "message": "Fallo al conectar a la base de datos. Revise credenciales y host."
+        }), 500
+
+@app.route('/items', methods=['GET'])
+def get_items():
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "DB no disponible"}), 500
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, nombre, estado FROM items ORDER BY id DESC")
+        items = cursor.fetchall()
+        cursor.close()
+        return jsonify(items)
+    except Exception as e:
+        print(f"Error al obtener items: {e}")
+        return jsonify({"error": "Error al consultar la base de datos."}), 500
+    finally:
+        conn.close()
+
+@app.route('/items', methods=['POST'])
+def add_item():
+    conn = get_db_connection()
+    if not conn: return jsonify({"error": "DB no disponible"}), 500
+    
+    data = request.get_json()
+    nombre = data.get('nombre')
+    
+    if not nombre:
+        return jsonify({"error": "El campo 'nombre' es requerido."}), 400
+
+    try:
+        cursor = conn.cursor()
+        sql = "INSERT INTO items (nombre, estado) VALUES (%s, %s)"
+        cursor.execute(sql, (nombre, 'pendiente'))
+        conn.commit()
+        item_id = cursor.lastrowid
+        cursor.close()
+        return jsonify({"message": "Item creado", "id": item_id}), 201
+    except Exception as e:
+        print(f"Error al añadir item: {e}")
+        conn.rollback()
+        return jsonify({"error": "Error al insertar en la base de datos."}), 500
+    finally:
+        conn.close()
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000), debug=False)
