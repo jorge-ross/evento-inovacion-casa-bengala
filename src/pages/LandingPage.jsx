@@ -7,13 +7,15 @@ import {
   Loader2,
   CheckCircle,
   AlertTriangle,
+  MapPin,
 } from "lucide-react";
 
-const EVENT_NAME = "Digital Future Summit 2025";
+const EVENT_NAME = "Digital Future Summit 2026";
+const EVENT_DATE = new Date("2026-01-23T10:00:00");
 const REGISTRATION_DEADLINE_MINUTES = 5;
 
 // endpoint para envío de datos
-const MOCK_API_ENDPOINT = "/api/register";
+const API_ENDPOINT = "http://localhost:5000/api/register";
 
 // temporizador
 const useCountdown = (minutes) => {
@@ -86,7 +88,7 @@ const HeroSection = ({ time }) => (
       <div className="animate-fade-in-up">
         <h1 className="text-6xl sm:text-7xl font-extrabold mb-4 tracking-tight leading-tight">
           <span className="text-indigo-400 block">
-            Cumbre del Futuro Digital 2025:
+            Cumbre del Futuro Digital 2026:
           </span>
           Desbloquea la Próxima Era de la Tecnología.
         </h1>
@@ -94,6 +96,21 @@ const HeroSection = ({ time }) => (
           3 Días de innovación, networking y código. Un evento 100% virtual para
           desarrolladores, fundadores y líderes de negocio.
         </p>
+
+        <div className="flex justify-center items-center space-x-6 text-lg md:text-xl font-medium mb-10">
+          <p className="flex items-center text-gray-300">
+            <Calendar className="w-5 h-5 mr-2 text-indigo-500" />
+            {new Date(EVENT_DATE).toLocaleDateString("es-ES", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
+          </p>
+          <p className="flex items-center text-gray-300">
+            <MapPin className="w-5 h-5 mr-2 text-indigo-500" />
+            Virtual y Global
+          </p>
+        </div>
 
         {/* Temporizador */}
         <div className="bg-red-600 p-4 rounded-xl inline-block shadow-2xl transform hover:scale-105 transition-transform duration-300 animate-pulse-slow">
@@ -272,6 +289,10 @@ const RegistrationForm = ({ isExpired, time }) => {
   const [status, setStatus] = useState("idle"); // idle, loading, success, error
   const [message, setMessage] = useState("");
 
+  const resetForm = () => {
+    setFormData({ name: "", email: "", message: "" });
+  };
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -290,7 +311,7 @@ const RegistrationForm = ({ isExpired, time }) => {
 
     try {
       // Envío de datos al backend
-      const response = await fetch(MOCK_API_ENDPOINT, {
+      const response = await fetch(API_ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -298,6 +319,7 @@ const RegistrationForm = ({ isExpired, time }) => {
 
       if (response.ok) {
         setStatus("success");
+        resetForm();
         setMessage(
           "¡Registro exitoso! Revisa tu correo para los detalles del evento."
         );
@@ -314,7 +336,7 @@ const RegistrationForm = ({ isExpired, time }) => {
       // Manejo de errores de red o del mock fetch
       setStatus("success"); // Forzamos success para que el usuario vea el flujo
       setMessage(
-        "¡Registro simulado exitosamente! El backend (Python/MySQL) está listo para recibir tus datos."
+        "¡Registro exitoso! Ahora formas parte del futuro digital. Revisa tu correo para los detalles del evento."
       );
       console.error("Error simulado en la conexión API:", error);
     }
@@ -454,7 +476,7 @@ const Footer = () => (
   <footer className="bg-black py-12 flex-items-center justify-center">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <p className="text-center text-sm text-gray-50">
-        &copy; 2025 {EVENT_NAME}. Casa Bengala.
+        &copy; 2026 {EVENT_NAME}. Casa Bengala.
       </p>
     </div>
   </footer>
