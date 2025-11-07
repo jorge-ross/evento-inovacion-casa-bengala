@@ -14,18 +14,26 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+DB_PARAMS = None
+DB_INITIALIZED = False
+
 def get_db_connection_params():
+    global DB_PARAMS
+    if DB_PARAMS is not None:
+        return DB_PARAMS
+
     mysql_url = os.environ.get('MYSQL_URL')
 
     if not mysql_url:
-        logging.error("La variable de entorno MYSQL_URL no está configurada.")
-        return {
+        logging.critical("La variable de entorno MYSQL_URL NO está configurada. Usando fallback 127.0.0.1.")
+        DB_PARAMS = {
             'host': '127.0.0.1', 
             'user': 'root', 
             'password': '', 
             'db': 'testdb', 
             'charset': 'utf8mb4'
         }
+        return DB_PARAMS
 
     try:
         url = urlparse(mysql_url)
@@ -41,15 +49,27 @@ def get_db_connection_params():
             params['port'] = url.port
             
         logging.info(f"Parámetros de DB cargados. Host: {params['host']}, DB: {params['db']}")
-        return params
+        DB_PARAMS = params
+        return DB_PARAMS
 
     except Exception as e:
         logging.error(f"Error al parsear MYSQL_URL: {e}", exc_info=True)
         return {}
 
-def create_db_table(params):
+def create_db_table():
+    global DB_INITIALIZED, DB_PARAMS
+    if DB_INITIALIZED:
+        return True
+
+    if DB_PARAMS is None:
+        get_db_connection_params()
+
+    if not DB_PARAMS or not DB_PARAMS.get('host'):
+        logging.critical("Fallo al obtener los parámetros de DB. No se puede inicializar la tabla.")
+        return False
+        
     try:
-        connection = pymysql.connect(**params)
+        connection = pymysql.connect(**DB_PARAMS)
         with connection.cursor() as cursor:
             sql = """
             CREATE TABLE IF NOT EXISTS registrations (
@@ -63,19 +83,26 @@ def create_db_table(params):
             cursor.execute(sql)
         connection.commit()
         connection.close()
-        logging.info("Tabla 'registrations' verificada o creada exitosamente.")
+        DB_INITIALIZED = True
+        logging.info("Tabla 'registrations' verificada/creada exitosamente.")
         return True
     except Exception as e:
         logging.error(f"Error al crear/verificar la tabla en la DB: {e}", exc_info=True)
         return False
 
-DB_PARAMS = get_db_connection_params()
+get_db_connection_params()
 
-if DB_PARAMS.get('host'):
-    create_db_table(DB_PARAMS)
 
 @app.route('/api/register', methods=['POST'])
 def register():
+    global DB_INITIALIZED
+    if not DB_INITIALIZED:
+        if not create_db_table():
+            return jsonify({
+                'success': False, 
+                'message': 'Error interno: No se pudo conectar la base de datos para la inicialización. Verifica tu configuración.'
+            }), 500
+    
     data = request.get_json()
     name = data.get('name')
     email = data.get('email')
@@ -87,8 +114,8 @@ def register():
             'message': 'Faltan datos requeridos: nombre completo o correo electrónico.'
         }), 400
 
-    if not DB_PARAMS or not DB_PARAMS.get('host'):
-        logging.critical("Fallo crítico: No se encontraron parámetros de conexión válidos.")
+    if not DB_PARAMS or not DB_PARAMS.get('host') or not DB_INITIALIZED:
+        logging.critical("Fallo crítico: No hay parámetros válidos o la DB no se inicializó.")
         return jsonify({
             'success': False, 
             'message': 'Error interno: Faltan parámetros de configuración de la base de datos.'
