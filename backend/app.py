@@ -160,7 +160,7 @@ def register():
         logging.error(f"Error Operacional de MySQL (Conexión/DB): {e}", exc_info=True)
         return jsonify({
             'success': False, 
-            'message': 'Error interno: No se pudo conectar o interactuar con la base de datos. Por favor, verifica tu servidor MySQL y configuración."
+            'message': 'Error interno: No se pudo conectar o interactuar con la base de datos. Por favor, verifica tu servidor MySQL y configuración.'
         }), 500
         
     except Exception as e:
