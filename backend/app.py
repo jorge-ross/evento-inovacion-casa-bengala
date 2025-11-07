@@ -59,11 +59,20 @@ verify_db_connection(db_params)
 def register_user():
     try:
         data = request.json
+        
+        # LOG DE DEPURACIÓN CRÍTICO
+        print(f"DEBUG: Datos recibidos en /api/register: {data}")
+
+        if data is None:
+            print("ERROR: Datos JSON es None. Probable Content-Type incorrecto en el frontend.")
+            return jsonify({"success": False, "message": "Formato de solicitud inválido o JSON vacío."}), 400
+
         full_name = data.get('full_name')
         email = data.get('email')
         message = data.get('message')
 
         if not all([full_name, email]):
+            print(f"ERROR: Validación fallida. full_name: '{full_name}', email: '{email}'")
             return jsonify({"success": False, "message": "Faltan datos requeridos: nombre completo o correo electrónico."}), 400
 
         if not db_params:
@@ -86,6 +95,7 @@ def register_user():
                 connection.close()
 
         except pymysql.Error as e:
+            # ESTE ES EL ERROR QUE ESTAMOS BUSCANDO: PROBLEMA DE TABLA O CONEXIÓN
             print(f"Error de base de datos al registrar: {e}")
             return jsonify({"success": False, "message": "Error interno: No se pudo completar el registro en la base de datos. Por favor, verifica tu servidor MySQL y configuración."}), 500
         
@@ -94,8 +104,9 @@ def register_user():
             return jsonify({"success": False, "message": "Error interno desconocido."}), 500
 
     except Exception as e:
-        print(f"Error al recibir o procesar JSON: {e}")
-        return jsonify({"success": False, "message": "Formato de solicitud inválido."}), 400
+        # Esto captura errores si el body no es JSON (ej. "Expecting value: line 1 column 1")
+        print(f"ERROR FATAL al recibir o procesar JSON: {e}")
+        return jsonify({"success": False, "message": "Formato de solicitud inválido. No se pudo decodificar JSON."}), 400
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
