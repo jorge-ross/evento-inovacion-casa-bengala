@@ -15,9 +15,11 @@ CORS(app)
 
 def get_db_config():
     mysql_url = os.getenv('MYSQL_URL')
-    if mysql_url:
+    database_name = os.getenv('MYSQL_DATABASE')
+    
+    if mysql_url and database_name:
         url = urlparse(mysql_url)
-        database_name = url.path.lstrip('/') if url.path else os.getenv('MYSQL_DATABASE', 'event_db')
+        
         config = {
             'user': url.username, 
             'password': url.password,
@@ -27,6 +29,8 @@ def get_db_config():
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
+        print(f"DEBUG DB Config: Host={config['host']}, DB={config['database']}")
+        
     else:
         config = {
             'user': os.getenv('MYSQL_USER', 'root'), 
@@ -37,6 +41,8 @@ def get_db_config():
             'charset': 'utf8mb4',
             'cursorclass': pymysql.cursors.DictCursor
         }
+        print(f"DEBUG DB Config (Local): Host={config['host']}, DB={config['database']}")
+        
     return config
 
 def get_db_connection():
@@ -45,6 +51,7 @@ def get_db_connection():
         conn = pymysql.connect(**DB_CONFIG)
         return conn
     except Exception as err:
+        print(f"!!! CRITICAL DB CONNECTION ERROR: {err}")
         return None
 
 def is_valid_email(email):
@@ -95,6 +102,7 @@ def register_user():
             return jsonify({'message': 'Error: Este correo ya se encuentra registrado.'}), 409
 
     except Exception as err:
+        print(f"Error durante verificación/creación de tabla: {err}")
         return jsonify({'message': 'Error interno al verificar/crear el registro.'}), 500
 
     try:
