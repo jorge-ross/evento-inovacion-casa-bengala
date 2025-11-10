@@ -15,7 +15,8 @@ const EVENT_DATE = new Date("2026-01-23T10:00:00");
 const REGISTRATION_DEADLINE_MINUTES = 5;
 
 // endpoint para envío de datos
-const API_ENDPOINT = "http://localhost:5000/api/register";
+const API_ENDPOINT =
+  "https://evento-inovacion-casa-bengala-production.up.railway.app/api/register";
 
 // temporizador
 const useCountdown = (minutes) => {
