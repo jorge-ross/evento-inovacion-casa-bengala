@@ -20,6 +20,7 @@ CORS(app)
 # }
 
 db_url = os.getenv("DATABASE_URL")
+AUTH_TOKEN = os.environ.get("AUTH_TOKEN")
 
 if not db_url:
     raise Exception("❌ Error: DATABASE_URL no está definida en las variables de entorno.")
@@ -116,6 +117,32 @@ def register_user():
         cursor.close()
         conn.close()
 
+# Endpoint para obtener los registros (protegido por token)
+@app.route('/api/registrations', methods=['GET'])
+def get_registrations():
+    token = request.args.get("key")
+
+    if not AUTH_TOKEN:
+        return {"error": "El servidor no tiene AUTH_TOKEN configurado."}, 500
+
+    if token != AUTH_TOKEN:
+        return {"error": "Unauthorized"}, 401
+
+    conn = get_db_connection()
+    if conn is None:
+        return {"error": "Error al conectar a la base de datos"}, 500
+
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT name, email, message, created_at 
+        FROM registrations
+        ORDER BY created_at DESC
+    """)
+    data = cursor.fetchall()
+    
+    cursor.close()
+    conn.close()
+    return {"registrations": data}, 200
 
 if __name__ == '__main__':
     import os
