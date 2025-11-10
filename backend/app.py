@@ -1,74 +1,50 @@
-import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import re
 import pymysql
-import pymysql.cursors 
-from urllib.parse import urlparse 
-from dotenv import load_dotenv
-import json
-
-load_dotenv()
+import os
+from urllib.parse import urlparse
 
 app = Flask(__name__)
-CORS(app) 
+CORS(app)
 
-def get_db_config():
-    db_host = os.environ.get('MYSQLHOST') or os.environ.get('MYSQL_HOST')
-    db_user = os.environ.get('MYSQLUSER') or os.environ.get('MYSQL_USER')
-    db_pass = os.environ.get('MYSQLPASSWORD') or os.environ.get('MYSQL_PASSWORD')
-    db_name = os.environ.get('MYSQLDATABASE') or os.environ.get('MYSQL_DATABASE')
-    db_port = os.environ.get('MYSQLPORT') or os.environ.get('MYSQL_PORT')
+# Configuración de conexión a mysql usando pymysql
+# DB_CONFIG = {
+#     'user': 'event_user',
+#     'password': '***********!',
+#     'host': 'localhost',
+#     'port': 3306,
+#     'database': 'event_db',
+#     'charset': 'utf8mb4',
+#     'cursorclass': pymysql.cursors.DictCursor
+# }
 
-    if db_host and db_user and db_name:
-        config = {
-            'user': db_user, 
-            'password': db_pass,
-            'host': db_host if db_host != 'localhost' else 'mysql.railway.internal', 
-            'port': int(db_port or 3306),
-            'database': db_name,
-            'charset': 'utf8mb4',
-            'cursorclass': pymysql.cursors.DictCursor
-        }
-        print(f"DEBUG DB Config (Railway Individual): Host={config['host']}, DB={config['database']}")
-        return config
+db_url = os.getenv("DATABASE_URL")
 
-    mysql_url = os.environ.get('MYSQL_URL')
-    if mysql_url:
-        url = urlparse(mysql_url)
-        db_host = url.hostname if url.hostname else 'mysql.railway.internal'
+if not db_url:
+    raise Exception("❌ Error: DATABASE_URL no está definida en las variables de entorno.")
 
-        config = {
-            'user': url.username, 
-            'password': url.password,
-            'host': db_host, 
-            'port': url.port if url.port else 3306,
-            'database': url.path.lstrip('/'),
-            'charset': 'utf8mb4',
-            'cursorclass': pymysql.cursors.DictCursor
-        }
-        print(f"DEBUG DB Config (Railway URL): Host={config['host']}, DB={url.path.lstrip('/')}")
-        return config
+url = urlparse(db_url)
 
-    print("!!! ERROR CRÍTICO DE CONFIGURACIÓN: No se leyeron las variables de entorno de Railway.")
-    return {
-        'user': 'MISSING_USER', 
-        'password': 'MISSING_PASSWORD',
-        'host': 'mysql.railway.internal',
-        'port': 3306,
-        'database': 'event_db',
-        'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor
-    }
+DB_CONFIG = {
+    'user': url.username,
+    'password': url.password,
+    'host': url.hostname,
+    'port': url.port,
+    'database': url.path[1:],
+    'charset': 'utf8mb4',
+    'cursorclass': pymysql.cursors.DictCursor
+}
+
 
 def get_db_connection():
-    DB_CONFIG = get_db_config()
+    # print("Intentando conectar a la base de datos...")
     try:
         conn = pymysql.connect(**DB_CONFIG)
         print("Conexión a DB exitosa.")
         return conn
     except Exception as err:
-        print(f"!!! CRITICAL DB CONNECTION ERROR: {err}")
+        print(f"Error al conectar a MySQL: {err}")
         return None
 
 def is_valid_email(email):
@@ -77,18 +53,22 @@ def is_valid_email(email):
 
 @app.route('/', methods=['GET'])
 def home():
-    conn = get_db_connection()
-    db_status = "Conectado a DB" if conn else "ERROR de Conexión a DB"
-    if conn: conn.close()
-    return jsonify({'message': f'Digital Future Summit API Backend está funcionando. Estado de DB: {db_status}'}), 200
+    # Endpoint para verificar que el servidor está funcionando
+    return jsonify({'message': 'Digital Future Summit API Backend está funcionando correctamente.'}), 200
 
+
+# Endpoint de registro
 @app.route('/api/register', methods=['POST'])
 def register_user():
+    
     data = request.get_json()
     name = data.get('name')
     email = data.get('email')
     message = data.get('message', '')
 
+    print(f"Solicitud de registro recibida: Nombre='{name}', Email='{email}'")
+
+    # Validaciones
     if not name or not email:
         return jsonify({'message': 'Error: Nombre y Email son campos obligatorios.'}), 400
     
@@ -97,31 +77,25 @@ def register_user():
 
     conn = get_db_connection()
     if conn is None:
-        return jsonify({'message': 'Error interno: No se pudo conectar a la base de datos. Por favor, verifica tu servidor MySQL y configuración.'}), 500
+        return jsonify({'message': 'Error interno: No se pudo conectar a la base de datos.'}), 500
 
     cursor = conn.cursor()
 
+    # Verificar si el email ya existe
     try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS registrations (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
-                email VARCHAR(255) NOT NULL UNIQUE,
-                message TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-
         check_query = "SELECT id FROM registrations WHERE email = %s"
         cursor.execute(check_query, (email,))
         if cursor.fetchone():
+            conn.close()
+            print(f"Registro fallido: El email {email} ya existe.")
             return jsonify({'message': 'Error: Este correo ya se encuentra registrado.'}), 409
 
     except Exception as err:
-        print(f"Error durante verificación/creación de tabla: {err}")
-        return jsonify({'message': 'Error interno al verificar/crear el registro.'}), 500
+        conn.close()
+        print(f"Error de verificación en DB: {err}")
+        return jsonify({'message': 'Error al verificar el registro.'}), 500
 
+    # Insertar el nuevo registro
     try:
         insert_query = """
             INSERT INTO registrations (name, email, message) 
@@ -130,17 +104,20 @@ def register_user():
         cursor.execute(insert_query, (name, email, message))
         conn.commit()
         
-        return jsonify({'message': 'Registro completado con éxito!'}), 201
+        print(f"Registro exitoso para el email: {email}")
+        return jsonify({'message': 'Registro exitoso!'}), 200
 
     except Exception as err:
         conn.rollback()
+        print(f"Error de inserción en DB: {err}")
         return jsonify({'message': 'Error interno al guardar el registro.'}), 500
     
     finally:
-        if cursor: cursor.close()
-        if conn and conn.open: conn.close()
+        cursor.close()
+        conn.close()
 
 
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000)) 
-    app.run(host='0.0.0.0', port=port, debug=False)
+    import os
+    port = int(os.getenv("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
