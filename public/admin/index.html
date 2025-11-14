@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panel de Registros</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Panel de Registros</h1>
+
+      <form id="login-form">
+        <p>Introduce la clave de acceso:</p>
+        <input
+          type="text"
+          name="username"
+          autocomplete="username"
+          style="display: none"
+        />
+        <input
+          type="password"
+          id="auth-key"
+          placeholder="Auth Token"
+          autocomplete="new-password"
+        />
+        <button type="submit">Entrar</button>
+        <p id="login-error" class="error"></p>
+      </form>
+
+      <div id="table-section" class="hidden">
+        <button id="logout-btn">Cerrar sesión</button>
+        <table>
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Mensaje</th>
+              <th>Fecha</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <tr>
+              <td colspan="4">Cargando registros...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
