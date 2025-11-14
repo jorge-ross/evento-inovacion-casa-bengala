@@ -10,23 +10,27 @@
     <div class="container">
       <h1>Panel de Registros</h1>
 
-      <form id="login-form">
-        <p>Introduce la clave de acceso:</p>
-        <input
-          type="text"
-          name="username"
-          autocomplete="username"
-          style="display: none"
-        />
-        <input
-          type="password"
-          id="auth-key"
-          placeholder="Auth Token"
-          autocomplete="new-password"
-        />
-        <button type="submit">Entrar</button>
-        <p id="login-error" class="error"></p>
-      </form>
+      <div id="login-section">
+        <form id="login-form">
+          <p>Introduce la clave de acceso:</p>
+          <input
+            type="text"
+            name="username"
+            autocomplete="username"
+            style="display: none"
+          />
+
+          <input
+            type="password"
+            id="auth-key"
+            placeholder="Auth Token"
+            autocomplete="new-password"
+          />
+
+          <button type="submit">Entrar</button>
+          <p id="login-error" class="error"></p>
+        </form>
+      </div>
 
       <div id="table-section" class="hidden">
         <button id="logout-btn">Cerrar sesión</button>
